@@ -1,0 +1,271 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+# Vagrantfile for OpenClaw Development Environment
+# Provider: VirtualBox (default)
+# OS: Ubuntu 22.04 LTS
+# Purpose: Local development VM to separate from production VPS
+
+Vagrant.configure("2") do |config|
+  # ============================================
+  # Base Box Configuration
+  # ============================================
+  
+  # Ubuntu 22.04 LTS (Jammy Jellyfish)
+  config.vm.box = "ubuntu/jammy64"
+  config.vm.box_check_update = true
+  
+  # VM hostname
+  config.vm.hostname = "openclaw-dev"
+  
+  # ============================================
+  # Network Configuration
+  # ============================================
+  
+  # Private network for SSH access from host
+  # You can access VM at: 192.168.56.10
+  config.vm.network "private_network", ip: "192.168.56.10"
+  
+  # Port forwarding (alternative to private network)
+  # SSH: localhost:2222 -> VM:22 (Vagrant does this automatically)
+  # OpenClaw Gateway: localhost:18790 -> VM:18789
+  config.vm.network "forwarded_port", guest: 18789, host: 18790, host_ip: "127.0.0.1"
+  
+  # ============================================
+  # Shared Folders (Optional)
+  # ============================================
+  
+  # Uncomment to share a folder between host and VM
+  # Useful for sharing files, but not required
+  # config.vm.synced_folder "../projects", "/home/vagrant/projects"
+  
+  # Disable default /vagrant share if not needed
+  config.vm.synced_folder ".", "/vagrant", disabled: false
+  
+  # ============================================
+  # VirtualBox Provider Configuration
+  # ============================================
+  
+  config.vm.provider "virtualbox" do |vb|
+    # VM name in VirtualBox GUI
+    vb.name = "openclaw-dev"
+    
+    # Display name
+    vb.gui = false  # Headless mode (no GUI window)
+    
+    # Resource allocation
+    vb.memory = "2048"  # 2 GB RAM
+    vb.cpus = 2         # 2 CPU cores
+    
+    # Performance optimizations
+    vb.customize ["modifyvm", :id, "--natdnshostresolver1", "on"]
+    vb.customize ["modifyvm", :id, "--natdnsproxy1", "on"]
+    vb.customize ["modifyvm", :id, "--ioapic", "on"]
+    
+    # Enable nested virtualization (if needed for Docker)
+    # vb.customize ["modifyvm", :id, "--nested-hw-virt", "on"]
+  end
+  
+  # ============================================
+  # Provisioning: Shell Script (Initial Setup)
+  # ============================================
+  
+  # Run as root to do initial system setup
+  config.vm.provision "shell", inline: <<-SHELL
+    echo "========================================="
+    echo "OpenClaw Development VM - Initial Setup"
+    echo "========================================="
+    
+    # Update system
+    echo "Updating system packages..."
+    apt-get update
+    apt-get upgrade -y
+    
+    # Install essential tools
+    echo "Installing essential tools..."
+    apt-get install -y \
+      curl \
+      wget \
+      git \
+      vim \
+      build-essential \
+      software-properties-common
+    
+    # Create openclaw user (if not exists)
+    if ! id -u openclaw > /dev/null 2>&1; then
+      echo "Creating openclaw user..."
+      useradd -m -s /bin/bash openclaw
+      echo "openclaw:openclaw" | chpasswd
+      
+      # Add to sudo group (for development convenience)
+      usermod -aG sudo openclaw
+      
+      # Allow passwordless sudo (development only!)
+      echo "openclaw ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/openclaw
+      chmod 0440 /etc/sudoers.d/openclaw
+    fi
+    
+    echo "Initial setup complete!"
+  SHELL
+  
+  # ============================================
+  # Provisioning: Ansible (Main Configuration)
+  # ============================================
+  
+  # Option 1: Use Ansible playbook (recommended)
+  # Uncomment this block if you have Ansible installed on your host
+  # config.vm.provision "ansible" do |ansible|
+  #   ansible.playbook = "ansible/playbook.yml"
+  #   ansible.inventory_path = "ansible/inventory.ini"
+  #   ansible.limit = "all"
+  #   ansible.verbose = "v"
+  # end
+  
+  # Option 2: Use shell provisioner to run setup
+  # This works even if Ansible is not installed on host
+  config.vm.provision "shell", privileged: false, inline: <<-SHELL
+    echo "========================================="
+    echo "Installing Node.js and OpenClaw"
+    echo "========================================="
+    
+    # Install Node.js 18.x
+    echo "Installing Node.js 18..."
+    curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+    
+    # Verify installation
+    echo "Node.js version: $(node --version)"
+    echo "npm version: $(npm --version)"
+    
+    # Create OpenClaw directories
+    echo "Creating OpenClaw directories..."
+    sudo mkdir -p /opt/openclaw
+    sudo chown openclaw:openclaw /opt/openclaw
+    
+    # Switch to openclaw user for installation
+    sudo -u openclaw bash << 'EOF'
+      # Create package.json
+      cat > /opt/openclaw/package.json << 'PKGJSON'
+{
+  "name": "openclaw-dev",
+  "version": "1.0.0",
+  "description": "OpenClaw development environment",
+  "private": true,
+  "dependencies": {
+    "openclaw": "latest"
+  }
+}
+PKGJSON
+      
+      # Install OpenClaw
+      echo "Installing OpenClaw..."
+      cd /opt/openclaw
+      npm install
+      
+      # Create config directory
+      mkdir -p ~/.openclaw
+      
+      # Create workspace directory
+      mkdir -p ~/clawd
+      
+      # Add OpenClaw to PATH
+      if ! grep -q "/opt/openclaw/node_modules/.bin" ~/.bashrc; then
+        echo 'export PATH="/opt/openclaw/node_modules/.bin:$PATH"' >> ~/.bashrc
+      fi
+      
+      # Create welcome message
+      cat > ~/WELCOME.txt << 'WELCOME'
+========================================
+OpenClaw Development VM
+========================================
+
+Welcome to your OpenClaw development environment!
+
+Quick Start:
+1. Run onboarding wizard:
+   openclaw onboard
+
+2. Create development Telegram bot:
+   - Message @BotFather on Telegram
+   - Send: /newbot
+   - Name: YourBot DEV
+   - Copy the token
+
+3. Clone your projects:
+   cd ~/clawd
+   git clone https://github.com/YOUR_USERNAME/clawd.git
+
+4. Start OpenClaw gateway:
+   openclaw-gateway
+
+========================================
+Useful Commands:
+========================================
+
+# Check OpenClaw version
+openclaw --version
+
+# Run onboarding
+openclaw onboard
+
+# Start gateway
+openclaw-gateway
+
+# View this message again
+cat ~/WELCOME.txt
+
+========================================
+WELCOME
+      
+      echo "OpenClaw installation complete!"
+      echo "Run 'cat ~/WELCOME.txt' for next steps"
+EOF
+  SHELL
+  
+  # ============================================
+  # Post-Up Message
+  # ============================================
+  
+  config.vm.post_up_message = <<-MESSAGE
+  
+  ========================================
+  OpenClaw Development VM is Ready!
+  ========================================
+  
+  VM Details:
+  - IP Address: 192.168.56.10
+  - SSH Port: 2222 (localhost)
+  - OpenClaw Gateway: localhost:18790 -> VM:18789
+  
+  Quick Access:
+  
+  1. SSH to VM:
+     vagrant ssh
+  
+  2. Or use direct SSH:
+     ssh -p 2222 vagrant@localhost
+  
+  3. Switch to openclaw user:
+     sudo su - openclaw
+  
+  4. Read welcome message:
+     cat ~/WELCOME.txt
+  
+  Next Steps:
+  - Configure Antigravity Remote-SSH to connect to this VM
+  - Run 'openclaw onboard' to set up OpenClaw
+  - Create development Telegram bot
+  - Clone your clawd repository
+  
+  Vagrant Commands:
+  - vagrant halt       # Stop VM
+  - vagrant up         # Start VM
+  - vagrant ssh        # SSH to VM
+  - vagrant destroy    # Delete VM
+  - vagrant snapshot save <name>    # Save snapshot
+  - vagrant snapshot restore <name> # Restore snapshot
+  
+  ========================================
+  MESSAGE
+
+end
