@@ -1,0 +1,316 @@
+---
+# Ansible Playbook for OpenClaw Deployment
+# Creates dedicated user and sets up OpenClaw with IaC approach
+
+- name: Deploy OpenClaw with Dedicated User
+  hosts: all
+  become: yes
+  vars:
+    openclaw_user: openclaw
+    openclaw_home: /home/openclaw
+    openclaw_app_dir: /opt/openclaw
+    openclaw_version: latest
+    deploy_user: deploy
+
+  tasks:
+    # ============================================
+    # User Creation
+    # ============================================
+
+    - name: Create openclaw user
+      user:
+        name: "{{ openclaw_user }}"
+        shell: /bin/bash
+        create_home: yes
+        home: "{{ openclaw_home }}"
+        comment: "OpenClaw Application User"
+        system: no
+        groups: []  # No special groups - minimal permissions
+        state: present
+      tags: [user]
+
+    - name: Set openclaw home directory permissions
+      file:
+        path: "{{ openclaw_home }}"
+        owner: "{{ openclaw_user }}"
+        group: "{{ openclaw_user }}"
+        mode: '0755'
+        state: directory
+      tags: [user]
+
+    # ============================================
+    # Node.js Installation (v22+ required for OpenClaw)
+    # ============================================
+
+    - name: Check if Node.js is installed
+      command: node --version
+      register: node_check
+      ignore_errors: yes
+      changed_when: false
+      tags: [nodejs]
+
+    - name: Check Node.js version
+      shell: node --version | cut -d'v' -f2 | cut -d'.' -f1
+      register: node_major_version
+      ignore_errors: yes
+      changed_when: false
+      when: node_check.rc == 0
+      tags: [nodejs]
+
+    - name: Remove old Node.js if version < 22
+      apt:
+        name:
+          - nodejs
+          - npm
+          - libnode-dev
+          - libnode72
+        state: absent
+        purge: yes
+      when: node_check.rc == 0 and node_major_version.stdout | int < 22
+      tags: [nodejs]
+
+    - name: Download NodeSource setup script (Node.js 22.x)
+      get_url:
+        url: https://deb.nodesource.com/setup_22.x
+        dest: /tmp/nodesource_setup.sh
+        mode: '0755'
+      when: node_check.rc != 0 or (node_check.rc == 0 and node_major_version.stdout | int < 22)
+      tags: [nodejs]
+
+    - name: Run NodeSource setup script
+      command: bash /tmp/nodesource_setup.sh
+      when: node_check.rc != 0 or (node_check.rc == 0 and node_major_version.stdout | int < 22)
+      tags: [nodejs]
+
+    - name: Install Node.js 22.x and npm
+      apt:
+        name:
+          - nodejs
+        state: present
+        update_cache: yes
+      when: node_check.rc != 0 or (node_check.rc == 0 and node_major_version.stdout | int < 22)
+      tags: [nodejs]
+
+    - name: Clean up NodeSource setup script
+      file:
+        path: /tmp/nodesource_setup.sh
+        state: absent
+      tags: [nodejs]
+
+    - name: Display Node.js version
+      command: node --version
+      register: node_version
+      changed_when: false
+      tags: [nodejs]
+
+    - name: Display npm version
+      command: npm --version
+      register: npm_version
+      changed_when: false
+      tags: [nodejs]
+
+    - name: Show installed versions
+      debug:
+        msg:
+          - "Node.js version: {{ node_version.stdout }}"
+          - "npm version: {{ npm_version.stdout }}"
+      tags: [nodejs]
+
+    # ============================================
+    # Application Directory Setup
+    # ============================================
+
+    - name: Create OpenClaw application directory
+      file:
+        path: "{{ openclaw_app_dir }}"
+        state: directory
+        owner: "{{ openclaw_user }}"
+        group: "{{ openclaw_user }}"
+        mode: '0755'
+      tags: [setup]
+
+    - name: Create OpenClaw configuration directory
+      file:
+        path: "{{ openclaw_home }}/.openclaw"
+        state: directory
+        owner: "{{ openclaw_user }}"
+        group: "{{ openclaw_user }}"
+        mode: '0700'
+      tags: [setup]
+
+    - name: Create OpenClaw workspace directory
+      file:
+        path: "{{ openclaw_home }}/clawd"
+        state: directory
+        owner: "{{ openclaw_user }}"
+        group: "{{ openclaw_user }}"
+        mode: '0755'
+      tags: [setup]
+
+    # ============================================
+    # OpenClaw Installation (Project-based)
+    # ============================================
+
+    - name: Create package.json for OpenClaw
+      copy:
+        dest: "{{ openclaw_app_dir }}/package.json"
+        owner: "{{ openclaw_user }}"
+        group: "{{ openclaw_user }}"
+        mode: '0644'
+        content: |
+          {
+            "name": "openclaw-deployment",
+            "version": "1.0.0",
+            "description": "OpenClaw deployment managed by Ansible",
+            "private": true,
+            "dependencies": {
+              "openclaw": "{{ openclaw_version }}"
+            }
+          }
+      tags: [install]
+
+    - name: Install OpenClaw via npm
+      npm:
+        path: "{{ openclaw_app_dir }}"
+        state: present
+      become_user: "{{ openclaw_user }}"
+      tags: [install]
+
+    - name: Verify OpenClaw installation
+      stat:
+        path: "{{ openclaw_app_dir }}/node_modules/.bin/openclaw"
+      register: openclaw_bin
+      tags: [install]
+
+    - name: Display installation status
+      debug:
+        msg: "OpenClaw installed: {{ openclaw_bin.stat.exists }}"
+      tags: [install]
+
+    # ============================================
+    # PATH Configuration
+    # ============================================
+
+    - name: Add OpenClaw to PATH in bashrc
+      lineinfile:
+        path: "{{ openclaw_home }}/.bashrc"
+        line: 'export PATH="{{ openclaw_app_dir }}/node_modules/.bin:$PATH"'
+        state: present
+        create: yes
+        owner: "{{ openclaw_user }}"
+        group: "{{ openclaw_user }}"
+        mode: '0644'
+      tags: [config]
+
+    # ============================================
+    # Deployment Instructions
+    # ============================================
+
+    - name: Create onboarding instructions file
+      copy:
+        dest: "{{ openclaw_home }}/ONBOARDING_INSTRUCTIONS.txt"
+        owner: "{{ openclaw_user }}"
+        group: "{{ openclaw_user }}"
+        mode: '0644'
+        content: |
+          ========================================
+          OpenClaw Onboarding Instructions
+          ========================================
+
+          OpenClaw has been installed successfully!
+
+          To complete setup:
+
+          1. Switch to openclaw user:
+             sudo su - openclaw
+
+          2. Run onboarding wizard:
+             /opt/openclaw/node_modules/.bin/openclaw onboard
+
+             OR (if PATH is set):
+             openclaw onboard
+
+          3. During onboarding:
+             - Model: Choose "Claude.ai" (use subscription, not API key)
+             - Workspace: Default ~/clawd (already created)
+             - Gateway: Port 18789, localhost only, token auth
+             - Channels: Telegram (optional)
+
+          4. After onboarding, configuration will be at:
+             ~/.openclaw/openclaw.json
+
+          5. To start OpenClaw gateway:
+             openclaw gateway
+
+          ========================================
+          Installation Details:
+          ========================================
+
+          Application directory: {{ openclaw_app_dir }}
+          Configuration: {{ openclaw_home }}/.openclaw/
+          Workspace: {{ openclaw_home }}/clawd/
+
+          Node.js version: {{ node_version.stdout }}
+          npm version: {{ npm_version.stdout }}
+
+          ========================================
+      tags: [docs]
+
+    # ============================================
+    # Systemd Service Setup
+    # ============================================
+
+    - name: Deploy OpenClaw systemd service file
+      template:
+        src: templates/openclaw.service.j2
+        dest: /etc/systemd/system/openclaw.service
+        owner: root
+        group: root
+        mode: '0644'
+      tags: [service]
+
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: yes
+      tags: [service]
+
+    - name: Enable OpenClaw service
+      systemd:
+        name: openclaw.service
+        enabled: yes
+      tags: [service]
+
+    - name: Check OpenClaw service status
+      command: systemctl is-enabled openclaw.service
+      register: service_status
+      changed_when: false
+      tags: [service]
+
+    - name: Display service status
+      debug:
+        msg: "OpenClaw service enabled: {{ service_status.stdout }}"
+      tags: [service]
+
+    # ============================================
+    # Final Status
+    # ============================================
+
+    - name: Deployment summary
+      debug:
+        msg: |
+          ========================================
+          OpenClaw Setup Complete!
+          ========================================
+
+          User created: {{ openclaw_user }}
+          Home directory: {{ openclaw_home }}
+          Application: {{ openclaw_app_dir }}
+
+          Next steps:
+          1. SSH to server: ssh {{ deploy_user }}@YOUR_SERVER_IP
+          2. Switch to openclaw user: sudo su - openclaw
+          3. Read instructions: cat ~/ONBOARDING_INSTRUCTIONS.txt
+          4. Run onboarding: openclaw onboard
+
+          ========================================
+      tags: [always]

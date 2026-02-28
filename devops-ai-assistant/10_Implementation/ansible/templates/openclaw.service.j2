@@ -1,0 +1,26 @@
+[Unit]
+Description=OpenClaw Gateway Service
+Documentation=https://github.com/TrafficGuard/openclaw
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ openclaw_user }}
+WorkingDirectory={{ openclaw_app_dir }}
+ExecStart={{ openclaw_app_dir }}/node_modules/.bin/openclaw gateway
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openclaw
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths={{ openclaw_home }}/.openclaw {{ openclaw_home }}/clawd
+
+[Install]
+WantedBy=multi-user.target
