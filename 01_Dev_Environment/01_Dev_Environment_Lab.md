@@ -76,7 +76,7 @@ vagrant --version
 # Клонуємо публічний студентський репозиторій
 git clone https://github.com/sobol-mo/devops-course.git
 
-# Переходимо в папку з Vagrantfile для Модуля 1
+# Переходимо в папку з Vagrantfile для Теми 1
 cd devops-course/DevOps/devops-ai-assistant/10_Implementation/01_vm/
 ```
 
@@ -199,7 +199,7 @@ exit
 vagrant snapshot save clean-install
 ```
 
-**Чому це важливо?** Якщо у наступних модулях ви щось зламаєте — одна команда поверне все назад:
+**Чому це важливо?** Якщо у наступних темах ви щось зламаєте — одна команда поверне все назад:
 
 ```bash
 # Відновлення до чистого стану (якщо щось пішло не так)
