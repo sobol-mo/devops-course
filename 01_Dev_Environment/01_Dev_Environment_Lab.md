@@ -77,7 +77,7 @@ vagrant --version
 git clone https://github.com/sobol-mo/devops-course.git
 
 # Переходимо в папку з Vagrantfile для Теми 1
-cd devops-course/DevOps/devops-ai-assistant/10_Implementation/01_vm/
+cd devops-course/devops-ai-assistant/10_Implementation/01_vm/
 ```
 
 **Очікуваний результат:** У поточній теці є файл `Vagrantfile`. Перегляньте його:
