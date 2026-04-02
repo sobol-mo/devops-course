@@ -180,7 +180,7 @@ DevOps неможливо зрозуміти у відриві від **Software
 #### Схема Pipeline: від ідеї до користувача
 
 ```text
- РОЗРОБНИК (DEV)  GIT (VCS)    I/CD (AUTO)    STAGING (QA)  PRODUCTION (OPS)
+ РОЗРОБНИК (DEV)  GIT (VCS)    CI/CD (AUTO)    STAGING (QA)  PRODUCTION (OPS)
      │              │               │              │            │
   пише код  ──► commit/push ──► авто-тести ──► перевірка ──► випуск
                                збірка (build)   вручну або    для всіх
