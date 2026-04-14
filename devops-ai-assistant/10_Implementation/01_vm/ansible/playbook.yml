@@ -10,6 +10,7 @@
     app_repo: "https://github.com/studentdev05/training-project.git"
 
   tasks:
+    # Створення окремого користувача для запуску додатку
     - name: Створити користувача для додатку
       user:
         name: "{{ app_user }}"
@@ -19,6 +20,7 @@
         groups: []
         state: present
 
+    # Встановлення системних пакетів для Python додатку та Docker
     - name: Встановити необхідні пакети
       apt:
         name:
@@ -27,9 +29,19 @@
           - python3
           - python3-pip
           - python3-venv
+          - docker.io
+          - docker-compose-v2
         state: present
         update_cache: yes
 
+    # Додавання користувача training до групи docker
+    - name: Додати користувача training до групи docker
+      user:
+        name: "{{ app_user }}"
+        groups: docker
+        append: yes
+
+    # Підготовка директорії для коду додатку
     - name: Створити директорію додатку
       file:
         path: "{{ app_dir }}"
@@ -38,6 +50,7 @@
         group: "{{ app_user }}"
         mode: "0755"
 
+    # Підготовка директорії для конфігураційних файлів користувача
     - name: Створити директорію для конфігурації
       file:
         path: "{{ app_home }}/.config"
@@ -46,6 +59,7 @@
         group: "{{ app_user }}"
         mode: "0700"
 
+    # Клонування fork репозиторію training-project
     - name: Клонувати репозиторій training-project
       git:
         repo: "{{ app_repo }}"
@@ -53,14 +67,20 @@
         version: main
       become_user: "{{ app_user }}"
 
+    # Створення локального файла .env з портом і паролем БД
     - name: Створити файл .env
       copy:
-        content: "PORT=5000\n"
+        content: |
+          PORT=5000
+          POSTGRES_PASSWORD={{ db_password }}
         dest: "{{ app_dir }}/.env"
         owner: "{{ app_user }}"
         group: "{{ app_user }}"
         mode: "0600"
+      notify:
+        - Restart training-app
 
+    # Встановлення Python залежностей у virtualenv
     - name: Встановити Python залежності додатку
       pip:
         requirements: "{{ app_dir }}/requirements.txt"
@@ -68,6 +88,7 @@
         virtualenv_command: /usr/bin/python3 -m venv
       become_user: "{{ app_user }}"
 
+    # Копіювання systemd unit-файла Flask сервісу
     - name: Скопіювати unit-файл сервісу
       copy:
         src: training-app.service
@@ -79,21 +100,38 @@
         - Reload systemd
         - Restart training-app
 
+    # Увімкнення та запуск Docker Engine
+    - name: Увімкнути та запустити Docker
+      systemd:
+        name: docker
+        enabled: yes
+        state: started
+
+    # Увімкнення автозапуску Flask сервісу
     - name: Активувати автозапуск сервісу
       systemd:
         name: training-app
         enabled: yes
 
+    # Запуск Flask сервісу
     - name: Запустити сервіс
       systemd:
         name: training-app
         state: started
 
+    # Запуск PostgreSQL контейнера через docker compose
+    - name: Запустити PostgreSQL контейнер
+      command: docker compose up -d
+      args:
+        chdir: "{{ app_dir }}"
+
   handlers:
+    # Перечитування конфігурації systemd після оновлення unit-файла
     - name: Reload systemd
       systemd:
         daemon_reload: yes
 
+    # Перезапуск Flask сервісу після зміни unit-файла або .env
     - name: Restart training-app
       systemd:
         name: training-app
