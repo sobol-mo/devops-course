@@ -1,0 +1,84 @@
+---
+- name: Налаштування сервера для training-project
+  hosts: devservers
+  become: yes
+
+  vars:
+    app_user: training
+    app_home: /home/training
+    app_dir: /opt/training-app
+    app_repo: "https://github.com/DenD100/devops-course.git"
+
+  tasks:
+    - name: Створити користувача для додатку
+      user:
+        name: "{{ app_user }}"
+        shell: /bin/bash
+        create_home: yes
+        home: "{{ app_home }}"
+        state: present
+
+    - name: Встановити необхідні пакети
+      apt:
+        name: [git, python3, python3-pip, python3-venv, virtualenv]
+        state: present
+        update_cache: yes
+
+    - name: Створити директорію додатку
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0755'
+
+    - name: Клонувати репозиторій з GitHub
+      git:
+        repo: "{{ app_repo }}"
+        dest: "{{ app_dir }}"
+        version: main
+      become_user: "{{ app_user }}"
+
+    - name: Створити файл .env
+      copy:
+        content: "PORT=5000\n"
+        dest: "{{ app_dir }}/.env"
+        owner: "{{ app_user }}"
+        mode: '0600'
+
+    - name: Встановити Python-залежності
+      pip:
+        requirements: "{{ app_dir }}/devops-ai-assistant/10_Implementation/01_vm/requirements.txt"
+        virtualenv: "{{ app_dir }}/venv"
+        virtualenv_python: python3
+      become_user: "{{ app_user }}"
+
+    - name: Скопіювати unit-файл сервісу
+      copy:
+        src: training-app.service
+        dest: /etc/systemd/system/training-app.service
+        owner: root
+        group: root
+        mode: '0644'
+      notify:
+        - Reload systemd
+        - Restart training-app
+
+    - name: Активувати автозапуск сервісу
+      systemd:
+        name: training-app
+        enabled: yes
+
+    - name: Запустити сервіс
+      systemd:
+        name: training-app
+        state: started
+  handlers:
+    - name: Reload systemd
+      systemd:
+        daemon_reload: yes
+
+    - name: Restart training-app
+      systemd:
+        name: training-app
+        state: restarted
