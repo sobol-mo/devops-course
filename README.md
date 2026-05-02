@@ -1,5 +1,5 @@
 <<<<<<< Updated upstream
-# DevOps Fundamentals Course
+# DevOps Fundamentals Course!
 
 Цей репозиторій містить матеріали курсу "Основи DevOps".
 (Тут буде детальна навігація курсом).
