@@ -75,5 +75,5 @@ jobs:
             -u ${{ secrets.SERVER_USER }} \
             --private-key ~/.ssh/deploy_key \
             --ssh-common-args="-o BatchMode=yes" \
-            -e "postgres_password=${{ secrets.POSTGRES_PASSWORD }}" \
+            -e "db_password=${{ secrets.POSTGRES_PASSWORD }}" \
             playbook.yml
