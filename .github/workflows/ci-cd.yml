@@ -1,0 +1,79 @@
+name: CI/CD Pipeline
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  lint:
+    name: Lint Ansible
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Ansible tools
+        run: pip install ansible ansible-lint
+
+      - name: Check Ansible syntax
+        working-directory: devops-ai-assistant/10_Implementation/01_vm/ansible
+        run: ansible-playbook playbook.yml --syntax-check
+
+      - name: Run ansible-lint
+        run: ansible-lint --profile min devops-ai-assistant/10_Implementation/01_vm/ansible/playbook.yml
+
+  test:
+    name: Test Flask app
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        # Оновлений шлях до requirements
+        run: pip install -r devops-ai-assistant/10_Implementation/01_vm/requirements-dev.txt
+
+      - name: Run tests
+        # Оновлена робоча директорія
+        working-directory: devops-ai-assistant/10_Implementation/01_vm
+        run: python3 -m pytest -q
+  deploy:
+    name: Deploy with Ansible
+    runs-on: self-hosted
+    needs: [lint, test]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          # Очищуємо старі ключі в пам'яті раннера для цієї сесії
+          rm -f ~/.ssh/deploy_key
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+      - name: Run Ansible Playbook
+        working-directory: devops-ai-assistant/10_Implementation/01_vm/ansible
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "False"
+        run: |
+          ansible-playbook -i "${{ secrets.SERVER_IP }}," \
+            -u ${{ secrets.SERVER_USER }} \
+            --private-key ~/.ssh/deploy_key \
+            --ssh-common-args="-o BatchMode=yes" \
+            -e "db_password=${{ secrets.POSTGRES_PASSWORD }}" \
+            playbook.yml
