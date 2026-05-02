@@ -23,12 +23,10 @@ jobs:
         run: pip install ansible ansible-lint
 
       - name: Check Ansible syntax
-        # Оновлений шлях
         working-directory: devops-ai-assistant/10_Implementation/01_vm/ansible
         run: ansible-playbook playbook.yml --syntax-check
 
       - name: Run ansible-lint
-        # Оновлений шлях до файлу
         run: ansible-lint --profile min devops-ai-assistant/10_Implementation/01_vm/ansible/playbook.yml
 
   test:
@@ -51,3 +49,31 @@ jobs:
         # Оновлена робоча директорія
         working-directory: devops-ai-assistant/10_Implementation/01_vm
         run: python3 -m pytest -q
+  deploy:
+    name: Deploy with Ansible
+    runs-on: self-hosted
+    needs: [lint, test]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Ansible
+        run: pip install ansible
+
+      - name: Set up SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+      - name: Run Ansible Playbook
+        working-directory: devops-ai-assistant/10_Implementation/01_vm/ansible
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "False"
+        run: |
+          ansible-playbook -i "${{ secrets.SERVER_IP }}," \
+            -u ${{ secrets.SERVER_USER }} \
+            --private-key ~/.ssh/id_ed25519 \
+            -e "postgres_password=${{ secrets.POSTGRES_PASSWORD }}" \
+            playbook.yml
