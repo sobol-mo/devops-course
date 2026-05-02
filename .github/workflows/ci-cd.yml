@@ -58,14 +58,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Ansible
-        run: pip install ansible
-
       - name: Set up SSH Key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
+          # Очищуємо старі ключі в пам'яті раннера для цієї сесії
+          rm -f ~/.ssh/deploy_key
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
 
       - name: Run Ansible Playbook
         working-directory: devops-ai-assistant/10_Implementation/01_vm/ansible
@@ -74,7 +73,7 @@ jobs:
         run: |
           ansible-playbook -i "${{ secrets.SERVER_IP }}," \
             -u ${{ secrets.SERVER_USER }} \
-            --private-key ~/.ssh/id_ed25519 \
+            --private-key ~/.ssh/deploy_key \
             --ssh-common-args="-o BatchMode=yes" \
             -e "postgres_password=${{ secrets.POSTGRES_PASSWORD }}" \
             playbook.yml
