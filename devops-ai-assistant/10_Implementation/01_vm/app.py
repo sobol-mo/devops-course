@@ -9,7 +9,7 @@ def index():
 
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok"})
+    return jsonify({"status": "broken"})
 
 if __name__ == '__main__':
     # Слухаємо всі інтерфейси (0.0.0.0), а не тільки 127.0.0.1
