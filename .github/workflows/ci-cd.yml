@@ -75,5 +75,6 @@ jobs:
           ansible-playbook -i "${{ secrets.SERVER_IP }}," \
             -u ${{ secrets.SERVER_USER }} \
             --private-key ~/.ssh/id_ed25519 \
+            --ssh-common-args="-o BatchMode=yes" \
             -e "postgres_password=${{ secrets.POSTGRES_PASSWORD }}" \
             playbook.yml
