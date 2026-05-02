@@ -1,0 +1,43 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  lint:
+    name: Lint Ansible
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Ansible tools
+        run: pip install ansible ansible-lint
+      - name: Check Ansible syntax
+        # Вказуємо шлях до папки з Ansible
+        run: cd devops-ai-assistant/10_Implementation/01_vm/ansible && ansible-playbook playbook.yml --syntax-check
+
+  test:
+    name: Test Flask app
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        # Вказуємо шлях до requirements-dev.txt
+        run: pip install -r devops-ai-assistant/10_Implementation/01_vm/requirements-dev.txt
+      - name: Run tests
+        # Вказуємо робочу директорію, щоб pytest бачив app.py
+        working-directory: devops-ai-assistant/10_Implementation/01_vm
+        run: python -m pytest -q
